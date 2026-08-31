@@ -337,6 +337,7 @@ ALL_EMULATION_SOURCES = \
 	epc532macha.c \
 	epdp11.c \
 	epdp11rt11.c \
+	epdp11rt11rel.c \
 	epdp11rt11sav.c \
 	epjelf.c \
 	epjlelf.c \

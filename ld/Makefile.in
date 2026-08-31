@@ -848,6 +848,7 @@ ALL_EMULATION_SOURCES = \
 	epc532macha.c \
 	epdp11.c \
 	epdp11rt11.c \
+	epdp11rt11rel.c \
 	epdp11rt11sav.c \
 	epjelf.c \
 	epjlelf.c \
@@ -1547,6 +1548,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epc532macha.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epdp11.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epdp11rt11.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epdp11rt11rel.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epdp11rt11sav.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epjelf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epjlelf.Po@am__quote@
