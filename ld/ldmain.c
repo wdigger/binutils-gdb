@@ -956,6 +956,8 @@ main (int argc, char **argv)
 
       link_info.output_bfd = NULL;
 
+      ldemul_after_close_output ();
+
       /* If the --force-exe-suffix is enabled, and we're making an
 	 executable file and it doesn't end in .exe, copy it to one
 	 which does.  */

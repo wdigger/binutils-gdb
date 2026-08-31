@@ -336,6 +336,8 @@ ALL_EMULATION_SOURCES = \
 	ens32knbsd.c \
 	epc532macha.c \
 	epdp11.c \
+	epdp11rt11.c \
+	epdp11rt11sav.c \
 	epjelf.c \
 	epjlelf.c \
 	eppcmacos.c \

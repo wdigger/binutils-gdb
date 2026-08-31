@@ -119,6 +119,8 @@ extern bool ldemul_print_symbol
   (struct bfd_link_hash_entry *hash_entry, void *ptr);
 extern struct bfd_link_hash_entry * ldemul_find_alt_start_symbol
   (struct bfd_sym_chain *);
+extern void ldemul_after_close_output
+  (void);
 
 typedef struct ld_emulation_xfer_struct {
   /* Run before parsing the command line and script file.
@@ -264,6 +266,14 @@ typedef struct ld_emulation_xfer_struct {
      Allows emulations to try variations of the name.  */
   struct bfd_link_hash_entry * (*find_alt_start_symbol)
     (struct bfd_sym_chain *entry);
+
+  /* Run after the output file has been finally closed and fully
+     written to disk (i.e. after ldwrite()'s bfd_close() succeeds).
+     For targets whose on-disk format differs from what was used
+     during linking (see pdp11rt11sav, which links as a.out-pdp11
+     but wants a differently-shaped RT-11 SAV file on disk), this is
+     where the finished file gets translated in place.  May be NULL.  */
+  void (*after_close_output) (void);
 
 } ld_emulation_xfer_type;
 

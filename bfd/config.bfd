@@ -1076,6 +1076,15 @@ case "${targ}" in
     targ_defvec=or1k_elf32_vec
     ;;
 
+  pdp11-*-rt11*)
+    targ_defvec=pdp11_aout_vec
+    targ_underscore=yes
+    # Makes the sav-pdp11 (RT-11 SAV executable) target vector visible
+    # in bfd/targets.c -- see the #ifdef guard there.  Only meaningful
+    # for the rt11 OS: aout builds stay identical to vanilla binutils.
+    targ_cflags=-DBFD_SUPPORTS_SAV_PDP11
+    ;;
+
   pdp11-*-*)
     targ_defvec=pdp11_aout_vec
     targ_underscore=yes

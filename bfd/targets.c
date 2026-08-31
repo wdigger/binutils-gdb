@@ -953,6 +953,9 @@ extern const bfd_target verilog_vec;
 extern const bfd_target tekhex_vec;
 extern const bfd_target binary_vec;
 extern const bfd_target ihex_vec;
+#ifdef BFD_SUPPORTS_SAV_PDP11
+extern const bfd_target sav_pdp11_vec;
+#endif
 
 /* All of the xvecs for core files.  */
 extern const bfd_target core_cisco_be_vec;
@@ -1383,6 +1386,10 @@ static const bfd_target * const _bfd_target_vector[] =
 	&binary_vec,
 /* Likewise for ihex.  */
 	&ihex_vec,
+#ifdef BFD_SUPPORTS_SAV_PDP11
+/* Likewise for RT-11 SAV executables.  */
+	&sav_pdp11_vec,
+#endif
 
 #if BFD_SUPPORTS_PLUGINS
 	&plugin_vec,

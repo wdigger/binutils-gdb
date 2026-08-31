@@ -661,6 +661,10 @@ case $1 in
 				basic_machine=a29k-amd
 				basic_os=udi
 				;;
+			uknc)
+				basic_machine=pdp11-uknc
+				basic_os=aout
+				;;
 			ultra3)
 				basic_machine=a29k-nyu
 				basic_os=sym1
@@ -2097,6 +2101,7 @@ case $os in
 	| rhapsody* \
 	| riscix* \
 	| riscos* \
+	| rt11* \
 	| rtems* \
 	| rtmk* \
 	| rtu* \

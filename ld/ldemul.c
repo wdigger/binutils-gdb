@@ -457,3 +457,10 @@ ldemul_print_symbol (struct bfd_link_hash_entry *hash_entry, void *ptr)
     return ld_emulation->print_symbol (hash_entry, ptr);
   return print_one_symbol (hash_entry, ptr);
 }
+
+void
+ldemul_after_close_output (void)
+{
+  if (ld_emulation->after_close_output)
+    ld_emulation->after_close_output ();
+}
