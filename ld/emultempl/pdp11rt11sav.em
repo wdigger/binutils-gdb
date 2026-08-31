@@ -171,7 +171,14 @@ fragment <<EOF
    \`objcopy -O sav-pdp11\` already does correctly.  This hook runs from
    ldmain.c's ldemul_after_close_output(), right after ldwrite()'s
    bfd_close() finishes writing that a.out file to the user's requested
-   output path.  */
+   output path.
+
+   Skipped entirely for -r/-Ur (bfd_link_relocatable): that output is a
+   relocatable a.out-pdp11 object meant to be fed into a later link, not
+   a finished program, and sav-pdp11 has no room for the symbols/relocs
+   such an object needs to carry -- converting it here would silently
+   produce a file that looks superficially like a SAV image but has lost
+   everything a subsequent link depends on.  */
 
 static void
 gld${EMULATION_NAME}_after_close_output (void)
@@ -179,6 +186,9 @@ gld${EMULATION_NAME}_after_close_output (void)
   bfd *ibfd, *obfd;
   asection *is;
   char *tmp_filename;
+
+  if (bfd_link_relocatable (&link_info))
+    return;
 
   tmp_filename = concat (output_filename, ".sav-tmp", (const char *) NULL);
 

@@ -17,6 +17,34 @@
 test -z "${BIG_OUTPUT_FORMAT}" && BIG_OUTPUT_FORMAT=${OUTPUT_FORMAT}
 test -z "${LITTLE_OUTPUT_FORMAT}" && LITTLE_OUTPUT_FORMAT=${OUTPUT_FORMAT}
 
+# Folding .rodata/.data into the same output section as .text (below)
+# is only correct for a final, address-assigning link: RELOCATING is
+# unset for a `-r' link, which must instead keep .data as its own
+# separate output section, exactly like the plain (non-flat-image)
+# pdp11.sc does -- a `-r' object is meant to be fed into a later link
+# (or converted straight to RT-11's own REL format by pdp11rt11rel),
+# and either one needs to still be able to tell .text and .data apart.
+# Folding them here too, unconditionally, used to make every `-r' link
+# of more than one input object silently lose its .data contents: they
+# ended up physically inside what the header called .text, while
+# obj_datasec()'s own size came out 0.
+if test -z "${RELOCATING}"; then
+  DATA_IN_TEXT=
+  SEPARATE_DATA_SECTION="
+  .data :
+  {
+    *(.rodata)
+    *(.rodata.*)
+    *(.data)
+  }"
+else
+  DATA_IN_TEXT="
+    *(.rodata)
+    *(.rodata.*)
+    *(.data)"
+  SEPARATE_DATA_SECTION=
+fi
+
 cat <<EOF
 /* Copyright (C) 2026 Free Software Foundation, Inc.
 
@@ -37,15 +65,13 @@ SECTIONS
   .text :
   {
     ${RELOCATING+PROVIDE (code = .);}
-    *(.text)
-    *(.rodata)
-    *(.rodata.*)
-    *(.data)
+    *(.text)${DATA_IN_TEXT}
     ${CONSTRUCTING+CONSTRUCTORS}
     ${RELOCATING+. = ALIGN(8);}
     ${RELOCATING+_etext = .;}
     ${RELOCATING+__etext = .;}
   }
+${SEPARATE_DATA_SECTION}
   .bss :
   {
     ${RELOCATING+__bss_start = .;}

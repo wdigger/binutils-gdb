@@ -1848,27 +1848,30 @@ pdp11_aout_swap_reloc_out (bfd *abfd, arelent *g, bfd_byte *natptr)
   else									\
     {									\
       /* Defined, section relative. replace symbol with pointer to	\
-	 symbol which points to section.  */				\
+	 symbol which points to section.  r_index here holds the	\
+	 on-disk RTYPE value itself (RABS/RTEXT/RDATA/RBSS, defined	\
+	 near the top of this file) -- NOT one of the differently-	\
+	 numbered N_ABS/N_TEXT/N_DATA/N_BSS symbol-type bits used	\
+	 elsewhere in this file, which happen to coincide only for	\
+	 N_TEXT/RTEXT (both 2).  Comparing against those instead used	\
+	 to silently read every RDATA/RBSS (non-extern, non-text)	\
+	 relocation back as if it were RABS.  */			\
       switch (r_index)							\
 	{								\
-	case N_TEXT:							\
-	case N_TEXT | N_EXT:						\
+	case RTEXT:							\
 	  cache_ptr->sym_ptr_ptr  = &obj_textsec (abfd)->symbol;	\
 	  cache_ptr->addend = ad  - su->textsec->vma;			\
 	  break;							\
-	case N_DATA:							\
-	case N_DATA | N_EXT:						\
+	case RDATA:							\
 	  cache_ptr->sym_ptr_ptr  = &obj_datasec (abfd)->symbol;	\
 	  cache_ptr->addend = ad - su->datasec->vma;			\
 	  break;							\
-	case N_BSS:							\
-	case N_BSS | N_EXT:						\
+	case RBSS:							\
 	  cache_ptr->sym_ptr_ptr  = &obj_bsssec (abfd)->symbol;		\
 	  cache_ptr->addend = ad - su->bsssec->vma;			\
 	  break;							\
 	default:							\
-	case N_ABS:							\
-	case N_ABS | N_EXT:						\
+	case RABS:							\
 	  cache_ptr->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;	\
 	  cache_ptr->addend = ad;					\
 	  break;							\
@@ -1896,14 +1899,18 @@ pdp11_aout_swap_reloc_in (bfd *		 abfd,
   cache_ptr->address = offset;
   cache_ptr->howto = howto_table_pdp11 + (r_pcrel ? 1 : 0);
 
-  if ((reloc_entry & RTYPE) == RABS)
-    r_index = N_ABS;
-  else
-    r_index = RINDEX (reloc_entry);
-
   /* r_extern reflects whether the symbol the reloc is against is
      local or global.  */
   r_extern = (reloc_entry & RTYPE) == REXT;
+
+  /* For an extern reloc, r_index is the symbol table index (packed
+     into the RIDXMASK bits); for a non-extern one, MOVE_ADDRESS below
+     wants the RTYPE value itself (RABS/RTEXT/RDATA/RBSS) to pick the
+     right section, not a symbol index -- there isn't one.  */
+  if (r_extern)
+    r_index = RINDEX (reloc_entry);
+  else
+    r_index = reloc_entry & RTYPE;
 
   if (r_extern && r_index >= symcount)
     {
@@ -1912,7 +1919,7 @@ pdp11_aout_swap_reloc_in (bfd *		 abfd,
 	 means that objdump -r *doesn't* see the actual reloc, and
 	 objcopy silently writes a different reloc.  */
       r_extern = 0;
-      r_index = N_ABS;
+      r_index = RABS;
     }
 
   MOVE_ADDRESS(0);
@@ -2020,6 +2027,18 @@ NAME (aout, squirt_out_relocs) (bfd *abfd, asection *section)
   unsigned char *native;
   unsigned int count = section->reloc_count;
   bfd_size_type natsize;
+
+  /* If no canonical (arelent) relocations were ever set up for this
+     output section, there is nothing of our own to squirt out here.
+     In particular, this is always the case right after an actual
+     link (bfd_link_relocatable output): aout_link_input_section
+     writes each input section's already-relocated raw reloc bytes
+     straight to disk itself, without ever populating orelocation, so
+     falling through here and blindly writing out a section->size'd
+     zero-filled buffer would silently clobber that already-correct
+     data with all-zero relocations instead of leaving it alone.  */
+  if (count == 0 || section->orelocation == NULL)
+    return true;
 
   natsize = section->size;
   native = bfd_zalloc (abfd, natsize);
@@ -3142,7 +3161,11 @@ aout_link_reloc_link_order (struct aout_final_link_info *flaginfo,
   int r_extern;
   reloc_howto_type *howto;
   file_ptr *reloff_ptr;
+#ifdef MY_put_reloc
   struct reloc_std_external srel;
+#else
+  bfd_byte pdp11_srel[RELOC_SIZE];
+#endif
   void * rel_ptr;
   bfd_size_type rel_size;
 
@@ -3208,52 +3231,52 @@ aout_link_reloc_link_order (struct aout_final_link_info *flaginfo,
 #ifdef MY_put_reloc
   MY_put_reloc(flaginfo->output_bfd, r_extern, r_index, p->offset, howto,
 	       &srel);
+  rel_ptr = (void *) &srel;
 #else
   {
-    int r_pcrel;
-    int r_baserel;
-    int r_jmptable;
-    int r_relative;
-    int r_length;
+    /* pdp11 a.out relocations are a single packed RELOC_SIZE-byte word
+       (RELFLG/RTYPE/RIDXMASK, defined near the top of this file), not
+       the generic sparse struct reloc_std_external (an address word
+       plus a 3-byte index and a 1-byte type) this function was adapted
+       from -- and, unlike that generic format, a pdp11 reloc word
+       carries no address of its own: its address is implicit in its
+       *position* within the reloc table, one dense slot per relocatable
+       word of section content (see the matching comment in
+       pdp11_aout_link_input_section).  Build the real packed word
+       directly instead of populating fields the pdp11 format doesn't
+       have and then only ever writing the first two bytes of them.  */
+    unsigned int r_pcrel = howto->pc_relative ? RELFLG : 0;
+    unsigned int reloc_entry;
 
-    fprintf (stderr, "TODO: line %d in bfd/pdp11.c\n", __LINE__);
-
-    r_pcrel = howto->pc_relative;
-    r_baserel = (howto->type & 8) != 0;
-    r_jmptable = (howto->type & 16) != 0;
-    r_relative = (howto->type & 32) != 0;
-    r_length = bfd_log2 (bfd_get_reloc_size (howto));
-
-    PUT_WORD (flaginfo->output_bfd, p->offset, srel.r_address);
-    if (bfd_header_big_endian (flaginfo->output_bfd))
-      {
-	srel.r_index[0] = r_index >> 16;
-	srel.r_index[1] = r_index >> 8;
-	srel.r_index[2] = r_index;
-	srel.r_type[0] =
-	  ((r_extern ?     RELOC_STD_BITS_EXTERN_BIG : 0)
-	   | (r_pcrel ?    RELOC_STD_BITS_PCREL_BIG : 0)
-	   | (r_baserel ?  RELOC_STD_BITS_BASEREL_BIG : 0)
-	   | (r_jmptable ? RELOC_STD_BITS_JMPTABLE_BIG : 0)
-	   | (r_relative ? RELOC_STD_BITS_RELATIVE_BIG : 0)
-	   | (r_length <<  RELOC_STD_BITS_LENGTH_SH_BIG));
-      }
+    if (r_extern)
+      reloc_entry = r_pcrel | REXT | ((unsigned int) r_index << 4 & RIDXMASK);
     else
       {
-	srel.r_index[2] = r_index >> 16;
-	srel.r_index[1] = r_index >> 8;
-	srel.r_index[0] = r_index;
-	srel.r_type[0] =
-	  ((r_extern ?     RELOC_STD_BITS_EXTERN_LITTLE : 0)
-	   | (r_pcrel ?    RELOC_STD_BITS_PCREL_LITTLE : 0)
-	   | (r_baserel ?  RELOC_STD_BITS_BASEREL_LITTLE : 0)
-	   | (r_jmptable ? RELOC_STD_BITS_JMPTABLE_LITTLE : 0)
-	   | (r_relative ? RELOC_STD_BITS_RELATIVE_LITTLE : 0)
-	   | (r_length <<  RELOC_STD_BITS_LENGTH_SH_LITTLE));
+	/* r_index computed above (N_ABS|N_EXT, or the output section's
+	   target_index) is a generic-format section reference; pdp11
+	   instead identifies the section directly via the type field,
+	   so re-derive it from pr->u.section.  */
+	asection *section = pr->u.section;
+	unsigned int r_type;
+
+	if (bfd_is_abs_section (section))
+	  r_type = RABS;
+	else if (section == obj_textsec (flaginfo->output_bfd))
+	  r_type = RTEXT;
+	else if (section == obj_datasec (flaginfo->output_bfd))
+	  r_type = RDATA;
+	else if (section == obj_bsssec (flaginfo->output_bfd))
+	  r_type = RBSS;
+	else
+	  r_type = RABS;
+
+	reloc_entry = r_pcrel | r_type;
       }
+
+    PUT_WORD (flaginfo->output_bfd, reloc_entry, pdp11_srel);
   }
+  rel_ptr = (void *) pdp11_srel;
 #endif
-  rel_ptr = (void *) &srel;
 
   /* We have to write the addend into the object file, since
      standard a.out relocs are in place.  It would be more
@@ -3415,6 +3438,8 @@ pdp11_aout_link_input_section (struct aout_final_link_info *flaginfo,
 	      /* If we know the symbol this relocation is against,
 		 convert it into a relocation against a section.  This
 		 is what the native linker does.  */
+	      bool converted_to_section = false;
+
 	      h = sym_hashes[r_index];
 	      if (h != NULL
 		  && (h->root.type == bfd_link_hash_defined
@@ -3422,16 +3447,28 @@ pdp11_aout_link_input_section (struct aout_final_link_info *flaginfo,
 		{
 		  asection *output_section;
 
-		  /* Compute a new r_index.  */
+		  /* Compute a new r_type: this reloc no longer needs to
+		     carry a symbol index at all, since the symbol it was
+		     against is now known -- record it as a plain
+		     section-relative reloc against whichever of our
+		     three sections now defines it, exactly like one that
+		     was already section-relative on input (the `else`
+		     branch below, which this converges with once
+		     `relocation`/`r_type` are set).  Note these are the
+		     RABS/RTEXT/RDATA/RBSS *relocation*-type constants
+		     (RTYPE's own encoding), not the differently-numbered
+		     N_ABS/N_TEXT/N_DATA/N_BSS *symbol*-type bits used
+		     elsewhere in this file.  */
+		  converted_to_section = true;
 		  output_section = h->root.u.def.section->output_section;
 		  if (output_section == obj_textsec (output_bfd))
-		    r_type = N_TEXT;
+		    r_type = RTEXT;
 		  else if (output_section == obj_datasec (output_bfd))
-		    r_type = N_DATA;
+		    r_type = RDATA;
 		  else if (output_section == obj_bsssec (output_bfd))
-		    r_type = N_BSS;
+		    r_type = RBSS;
 		  else
-		    r_type = N_ABS;
+		    r_type = RABS;
 
 		  /* Add the symbol value and the section VMA to the
 		     addend stored in the contents.  */
@@ -3480,10 +3517,21 @@ pdp11_aout_link_input_section (struct aout_final_link_info *flaginfo,
 		  relocation = 0;
 		}
 
-	      /* Write out the new r_index value.  */
-	      reloc_entry = GET_WORD (input_bfd, rel);
-	      reloc_entry &= RIDXMASK;
-	      reloc_entry |= r_index << 4;
+	      /* Write out the updated relocation entry.  RIDXMASK does
+		 not cover RTYPE/RELFLG (the type and pc-relative bits),
+		 so preserve/set those explicitly instead of masking them
+		 away: a converted, now-internal reference (above) must
+		 keep carrying its own section type so a later link still
+		 knows to rebase it, and a reference still left external
+		 must keep its REXT marker (with only its symbol index
+		 changed) so a later link can still resolve it.  Losing
+		 either turned every such reloc into a silently-inert
+		 RABS/non-pcrel entry.  */
+	      reloc_entry = r_pcrel ? RELFLG : 0;
+	      if (converted_to_section)
+		reloc_entry |= r_type;
+	      else
+		reloc_entry |= REXT | (((unsigned int) r_index << 4) & RIDXMASK);
 	      PUT_WORD (input_bfd, reloc_entry, rel);
 	    }
 	  else
@@ -3498,8 +3546,22 @@ pdp11_aout_link_input_section (struct aout_final_link_info *flaginfo,
 			    - section->vma);
 	    }
 
-	  /* Change the address of the relocation.  */
-	  fprintf (stderr, "TODO: change the address of the relocation\n");
+	  /* Unlike the generic a.out reloc format this code was adapted
+	     from (struct reloc_std_external, with its own explicit
+	     r_address field per entry), pdp11 a.out relocations are dense:
+	     a_trsize/a_drsize are always set equal to a_text/a_data (see
+	     NAME (aout, some_aout_object_p) and pdp11_aout_write_headers),
+	     giving exactly one RELOC_SIZE-byte reloc slot per relocatable
+	     word of section content, with an entry's address implicit in
+	     its *position* within the reloc table (r_addr above is computed
+	     as that position, not read from the entry itself) rather than
+	     stored in the entry.  aout_link_input_section (the caller of
+	     this function) already writes each input section's relocs out
+	     verbatim, immediately after writing that same section's
+	     contents at its new output_offset -- so both the content and
+	     its parallel reloc table move together, and the position
+	     correspondence this format relies on is preserved automatically.
+	     There is no separate address field here to patch up.  */
 
 	  /* Adjust a PC relative relocation by removing the reference
 	     to the original address in the section and including the
