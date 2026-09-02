@@ -271,6 +271,22 @@ struct aout_final_link_info
   int *symbol_map;
   /* A buffer large enough to hold output symbols of any input BFD.  */
   struct external_nlist *output_syms;
+  /* Whether the *output* file's .text/.data will carry a (fully
+     dense) reloc table at all -- true as soon as any contributing
+     input has its own relocs in that section, per pdp11's all-or-
+     nothing dense reloc format (see the comment on this in
+     aout_link_input_section). When true, aout_link_input_section
+     must write a full input_section->size-byte reloc region for
+     EVERY input contributing to that output section, real relocs
+     where the input has them and zero-filled where it doesn't --
+     never skip an input just because *it* has none -- or the dense
+     table's required 1:1 position correspondence with the section
+     content it parallels (one physical file position per file, no
+     independent per-input framing) breaks for any input after the
+     first one that differs from the others in whether it carries
+     relocs.  */
+  bool text_has_relocs;
+  bool data_has_relocs;
 };
 
 /* Copy of the link_info.separate_code boolean to select the output format with
@@ -3698,7 +3714,8 @@ aout_link_input_section (struct aout_final_link_info *flaginfo,
 			 bfd *input_bfd,
 			 asection *input_section,
 			 file_ptr *reloff_ptr,
-			 bfd_size_type rel_size)
+			 bfd_size_type rel_size,
+			 bool output_has_relocs)
 {
   bfd_size_type input_size;
   void * relocs;
@@ -3732,15 +3749,42 @@ aout_link_input_section (struct aout_final_link_info *flaginfo,
 				  input_size))
     return false;
 
-  /* If we are producing relocatable output, the relocs were
-     modified, and we now write them out.  */
-  if (bfd_link_relocatable (flaginfo->info) && rel_size > 0)
+  /* If we are producing relocatable output and the *output* section
+     carries a reloc table at all, write this input's share of it --
+     unlike every other a.out flavor's sparse reloc format, pdp11's is
+     dense: a_trsize/a_drsize can only ever be 0 (no table at all) or
+     exactly a_text/a_data (one RELOC_SIZE-byte slot per word of the
+     *entire* section, real or not), with no state in between and no
+     per-entry address field -- an entry's address is implicit in its
+     position within the table, which must therefore line up 1:1 with
+     the content it parallels (see the block comment on this a few
+     hundred lines below, in pdp11_aout_link_input_section). Gating
+     this solely on `rel_size > 0` (this input's OWN reloc byte count)
+     -- as generic a.out targets safely do, and as this function used
+     to do -- is therefore only safe when EVERY contributing input
+     agrees on whether it has relocs: an input with no relocs of its
+     own would contribute zero bytes here, permanently shifting every
+     later input's table entries out of position relative to their
+     actual content once even one earlier or later input in the same
+     output section *does* have relocs. Once ANY input anywhere in the
+     link has contributed relocs to this output section
+     (output_has_relocs, decided once for the whole link in
+     NAME(aout,final_link) since it also drives the output's own
+     header/e_flag), every input must contribute exactly
+     input_size bytes here: its own real reloc data when rel_size
+     equals input_size already (the dense invariant guarantees an
+     input's nonzero rel_size is always its own full input_size), or
+     input_size bytes of zero when this particular input has none.  */
+  if (bfd_link_relocatable (flaginfo->info) && output_has_relocs)
     {
+      if (rel_size == 0)
+	memset (relocs, 0, input_size);
+
       if (bfd_seek (flaginfo->output_bfd, *reloff_ptr, SEEK_SET) != 0)
 	return false;
-      if (bfd_write (relocs, rel_size, flaginfo->output_bfd) != rel_size)
+      if (bfd_write (relocs, input_size, flaginfo->output_bfd) != input_size)
 	return false;
-      *reloff_ptr += rel_size;
+      *reloff_ptr += input_size;
 
       /* Assert that the relocs have not run into the symbols, and
 	 that if these are the text relocs they have not run into the
@@ -3786,7 +3830,8 @@ aout_link_input_bfd (struct aout_final_link_info *flaginfo, bfd *input_bfd)
       if (! aout_link_input_section (flaginfo, input_bfd,
 				     obj_textsec (input_bfd),
 				     &flaginfo->treloff,
-				     exec_hdr (input_bfd)->a_trsize))
+				     exec_hdr (input_bfd)->a_trsize,
+				     flaginfo->text_has_relocs))
 	return false;
     }
   if (obj_datasec (input_bfd)->linker_mark)
@@ -3794,7 +3839,8 @@ aout_link_input_bfd (struct aout_final_link_info *flaginfo, bfd *input_bfd)
       if (! aout_link_input_section (flaginfo, input_bfd,
 				     obj_datasec (input_bfd),
 				     &flaginfo->dreloff,
-				     exec_hdr (input_bfd)->a_drsize))
+				     exec_hdr (input_bfd)->a_drsize,
+				     flaginfo->data_has_relocs))
 	return false;
     }
 
@@ -3906,17 +3952,40 @@ NAME (aout, final_link) (bfd *abfd,
 	}
     }
 
-  if (bfd_link_relocatable (info))
-    {
-      if (obj_textsec (abfd) != NULL)
-	trsize += (_bfd_count_link_order_relocs (obj_textsec (abfd)
-						 ->map_head.link_order)
-		   * obj_reloc_entry_size (abfd));
-      if (obj_datasec (abfd) != NULL)
-	drsize += (_bfd_count_link_order_relocs (obj_datasec (abfd)
-						 ->map_head.link_order)
-		   * obj_reloc_entry_size (abfd));
-    }
+  /* pdp11's a.out reloc format is dense, not sparse: a_trsize/a_drsize
+     (see swap_exec_header_in/out and pdp11_aout_write_headers) are
+     always either 0 (no relocs at all) or exactly a_text/a_data --
+     one RELOC_SIZE-byte slot for every word of the *entire* section,
+     real or not, with no state in between (the on-disk header has no
+     dedicated trsize/drsize field at all -- e_flag stores only the
+     single RELOC_STRIPPED bit, and both fields are reconstructed
+     on read as 0-or-full from that one bit). The sum the loop above
+     just accumulated (each aout-flavour input's own already-dense
+     exec_hdr(sub)->a_trsize/a_drsize, which is itself always either 0
+     or that input's own full section size) is therefore usually
+     *not* a legal value for the merged output: e.g. one input with
+     real relocs (contributing its own full, smaller size) plus one
+     without (contributing 0) sums to a partial figure that is neither
+     0 nor this output's own (larger, combined) a_text/a_data --
+     exactly the corruption this was chasing (it desynced
+     obj_sym_filepos/obj_str_filepos, computed below from this value,
+     from where aout_link_input_section actually wrote things,
+     "file truncated" on readback). The sum is exactly what this
+     dense format needs it for, though: a nonzero sum means at least
+     one input contributed real relocs, which is precisely condition
+     under which the *output* must carry a dense table at all -- only
+     the magnitude was wrong. Correct fix: treat the sum as that
+     boolean only, and separately remember it (text_has_relocs/
+     data_has_relocs) for aout_link_input_section below, which -- now
+     that the output either has a dense table or doesn't, uniformly --
+     must write every contributing input's own full section size into
+     that table (real relocs or zero-fill) rather than skip inputs
+     that individually have none.  */
+  aout_info.text_has_relocs = bfd_link_relocatable (info) && trsize > 0;
+  aout_info.data_has_relocs = bfd_link_relocatable (info) && drsize > 0;
+
+  trsize = aout_info.text_has_relocs ? obj_textsec (abfd)->size : 0;
+  drsize = aout_info.data_has_relocs ? obj_datasec (abfd)->size : 0;
 
   exec_hdr (abfd)->a_trsize = trsize;
   exec_hdr (abfd)->a_drsize = drsize;
@@ -3949,7 +4018,15 @@ NAME (aout, final_link) (bfd *abfd,
   if (aout_info.strtab == NULL)
     goto error_return;
 
-  /* Allocate buffers to hold section contents and relocs.  */
+  /* Allocate buffers to hold section contents and relocs.  aout_info.relocs
+     must be at least as large as max_contents_size, not just
+     max_relocs_size: aout_link_input_section now zero-fills it up to a
+     whole input section's size (see the comment there) for any input
+     that contributes no relocs of its own to an output section that
+     otherwise has them, which can exceed max_relocs_size when such an
+     input's section is bigger than any input's actual reloc table.  */
+  if (max_relocs_size < max_contents_size)
+    max_relocs_size = max_contents_size;
   aout_info.contents = bfd_malloc (max_contents_size);
   aout_info.relocs = bfd_malloc (max_relocs_size);
   aout_info.symbol_map = bfd_malloc (max_sym_count * sizeof (int *));
