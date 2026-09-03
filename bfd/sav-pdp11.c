@@ -37,11 +37,13 @@
      - word index 020 (octal), byte offset 040: the program's start
        (entry) address.
      - word index 021 (octal), byte offset 042: initial SP -- the top
-       of memory available to a user job (SAV_STACK_ADDRESS below),
-       *not* the entry address.  RT-11 copies this word into low memory
-       at address 042 before transferring control, so a program's
-       startup code can read it back via `mov @$042,sp` instead of
-       hardcoding a stack address of its own.
+       of memory available to a user job (SAV_STACK_ADDRESS below, or
+       the program's own top if that's higher -- see
+       sav_pdp11_write_object_contents), *not* the entry address.
+       RT-11 copies this word into low memory at address 042 before
+       transferring control, so a program's startup code can read it
+       back via `mov @$042,sp` instead of hardcoding a stack address of
+       its own.
      - word index 024 (octal), byte offset 050: the program's "high
        limit" -- total image size in bytes.
    Everything else in the header is zero.
@@ -73,18 +75,33 @@
    program content starts at 01000 (decimal 512).  */
 #define SAV_LOAD_ADDRESS	  512
 
-/* Top of memory available to a user job under this project's RT-11
-   configuration: the resident monitor (RT11SJ.SYS, currently 40448
-   bytes on disk, taken here as an upper bound on its resident
+/* Default top of memory available to a user job under this project's
+   RT-11 configuration: the resident monitor (RT11SJ.SYS, currently
+   40448 bytes on disk, taken here as an upper bound on its resident
    footprint) sits immediately below the fixed Unibus I/O page at
    0160000, so 0160000 - 40448 = 041000 (16896 decimal) is the highest
-   address a program can safely use.  RT-11 itself copies this same
-   value from word SAV_SP_WORD of the file we write here into low
-   memory at address 042 (octal) before transferring control, so a
-   program's startup code can pick it up via `mov @$042,sp` instead of
-   hardcoding it.  This is necessarily specific to the RT11SJ.SYS
-   build this project ships (resident driver selection changes the
-   monitor's footprint) -- revisit if that changes.  */
+   address a *small* program can assume is safe without asking.  RT-11
+   itself copies this same value from word SAV_SP_WORD of the file we
+   write here into low memory at address 042 (octal) before
+   transferring control, so a program's startup code can pick it up via
+   `mov @$042,sp` instead of hardcoding it -- but only as a
+   *provisional* value: crt0 immediately asks the monitor for the real
+   answer via `.SETTOP` and replaces SP with that.  This constant is
+   necessarily specific to the RT11SJ.SYS build this project ships
+   (resident driver selection changes the monitor's footprint) --
+   revisit if that changes.
+
+   Provisional does not mean irrelevant, though: `.SETTOP` is itself an
+   EMT, and an EMT's trap entry pushes the return PC/PS onto whatever
+   SP already holds *before* crt0 gets to replace it -- so this value
+   must never be lower than the program's own top of used memory.  A
+   program larger than SAV_STACK_ADDRESS (e.g. once printf/rand pull in
+   enough of libc/libgcc) would otherwise get a provisional SP that
+   points *inside* its own already-loaded code, and that first EMT's
+   automatic push corrupts it before the program executes a single
+   instruction of its own.  sav_pdp11_write_object_contents() guards
+   against this by raising the written SP word to the program's real
+   top when that exceeds this default.  */
 #define SAV_STACK_ADDRESS	16896
 
 /* Byte offset of the block-usage bitmap within the header.  */
@@ -241,10 +258,11 @@ sav_pdp11_write_object_contents (bfd *abfd)
   struct sav_pdp11_data *tdata = (struct sav_pdp11_data *) abfd->tdata.any;
   bfd_byte *image = tdata->image;
   bfd_vma highest = SAV_LOAD_ADDRESS;
+  bfd_vma highest_alloc = SAV_LOAD_ADDRESS;
   asection *s;
   bfd_size_type image_size;
   unsigned int blocks, full_bytes, rem_bits;
-  bfd_vma start;
+  bfd_vma start, sp;
 
   if (!tdata->have_base)
     {
@@ -256,15 +274,22 @@ sav_pdp11_write_object_contents (bfd *abfd)
     {
       bfd_vma end;
 
-      if ((s->flags
-	   & (SEC_HAS_CONTENTS | SEC_LOAD | SEC_ALLOC | SEC_NEVER_LOAD))
-	  != (SEC_HAS_CONTENTS | SEC_LOAD | SEC_ALLOC)
+      if ((s->flags & (SEC_ALLOC | SEC_NEVER_LOAD)) != SEC_ALLOC
 	  || s->size == 0)
 	continue;
 
       end = SAV_LOAD_ADDRESS + (s->lma - tdata->base) + s->size;
-      if (end > highest)
+
+      /* .bss and similar zero-initialized sections carry no file
+	 content, so they never move `highest` (the file image's own
+	 length) -- but they are still real, live memory that crt0's
+	 stack must not land on top of, so they always move
+	 `highest_alloc` below.  */
+      if ((s->flags & (SEC_HAS_CONTENTS | SEC_LOAD)) == (SEC_HAS_CONTENTS | SEC_LOAD)
+	  && end > highest)
 	highest = end;
+      if (end > highest_alloc)
+	highest_alloc = end;
     }
 
   /* The file itself is written at its exact byte length -- it is *not*
@@ -290,8 +315,22 @@ sav_pdp11_write_object_contents (bfd *abfd)
   if (start == 0)
     start = SAV_LOAD_ADDRESS;
 
+  /* SAV_STACK_ADDRESS is only a *default* -- it assumes a program small
+     enough to fit entirely below the resident monitor's footprint.  A
+     program whose own code/data (including .bss) extends past that
+     point needs a provisional SP at least as high as its own top,
+     otherwise crt0's very first EMT (`.SETTOP`, before `mov r0,sp`
+     replaces this value with the monitor's real answer) pushes PC/PS
+     onto a stack that starts inside the program's own already-loaded
+     text, silently corrupting it.  (Found via a real crash: a program
+     linked to ~20KB had this word set to the hardcoded 16896, and its
+     first EMT clobbered code just below that boundary.)  */
+  sp = SAV_STACK_ADDRESS;
+  if (highest_alloc > sp)
+    sp = highest_alloc;
+
   bfd_putl16 (start, image + SAV_START_WORD * 2);
-  bfd_putl16 (SAV_STACK_ADDRESS, image + SAV_SP_WORD * 2);
+  bfd_putl16 (sp, image + SAV_SP_WORD * 2);
   bfd_putl16 ((bfd_vma) image_size, image + SAV_HIGHLIMIT_WORD * 2);
 
   if (bfd_seek (abfd, (file_ptr) 0, SEEK_SET) != 0)
