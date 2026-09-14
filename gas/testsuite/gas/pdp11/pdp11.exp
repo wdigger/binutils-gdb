@@ -38,4 +38,7 @@ if [expr [istarget "pdp11-*-*"]]  then {
     pdp11_run_dump_test "pr14480"
     run_dump_test "pr23481"
     pdp11_run_dump_test "pr26001"
+    # Errors, not output: run_list_test compares what the assembler
+    # printed against branch-range.l.
+    run_list_test "branch-range" ""
 }

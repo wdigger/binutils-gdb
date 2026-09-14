@@ -363,6 +363,42 @@ md_apply_fix (fixS *fixP,
     val += symbol_get_bfdsym (fixP->fx_addsy)->section->vma;
     /* *value += fixP->fx_addsy->bsym->section->vma; */
 
+  /* A branch displacement is a count of words and lives in part of the
+     instruction word itself, so a value that does not fit simply
+     overwrites the opcode's own bits and produces a different, valid
+     instruction.  Nothing checked: a branch too far assembled without a
+     word of complaint and with a successful exit status, and what came
+     out was a branch to somewhere else entirely -- 440 bytes forward
+     disassembling as a jump backwards.  That turns any misjudged
+     instruction length in the compiler from a build failure into wrong
+     code, which is the worst way to find out about one.
+
+     Only when the value is final: while a symbol is still attached the
+     displacement is not known yet.  */
+  if (fixP->fx_addsy == NULL
+      && (fixP->fx_r_type == BFD_RELOC_PDP11_DISP_8_PCREL
+	  || fixP->fx_r_type == BFD_RELOC_PDP11_DISP_6_PCREL))
+    {
+      offsetT disp = (offsetT) val;
+      bool sob = fixP->fx_r_type == BFD_RELOC_PDP11_DISP_6_PCREL;
+
+      if ((disp & 1) != 0)
+	as_bad_where (fixP->fx_file, fixP->fx_line,
+		      _("branch to an odd address"));
+      disp /= 2;
+
+      /* sob counts backwards, and md_apply_fix negated the value above
+	 for it, so its field is unsigned.  */
+      if (sob ? (disp < 0 || disp > 63) : (disp < -128 || disp > 127))
+	as_bad_where (fixP->fx_file, fixP->fx_line,
+		      sob
+		      ? _("sob out of range: %ld words back, the field "
+			  "holds 0 to 63")
+		      : _("branch out of range: %ld words away, the field "
+			  "holds -128 to 127"),
+		      (long) disp);
+    }
+
   code &= ~mask;
   code |= (val >> shift) & mask;
   number_to_chars_littleendian (buf, code, size);
