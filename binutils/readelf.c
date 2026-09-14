@@ -144,6 +144,7 @@
 #include "elf/nfp.h"
 #include "elf/nios2.h"
 #include "elf/or1k.h"
+#include "elf/pdp11.h"
 #include "elf/pj.h"
 #include "elf/ppc.h"
 #include "elf/ppc64.h"
@@ -2228,6 +2229,10 @@ dump_relocations (Filedata *          filedata,
 
 	case EM_OR1K:
 	  rtype = elf_or1k_reloc_type (type);
+	  break;
+
+	case EM_PDP11:
+	  rtype = elf_pdp11_reloc_type (type);
 	  break;
 
 	case EM_PJ:
@@ -16107,6 +16112,7 @@ is_none_reloc (Filedata * filedata, unsigned int reloc_type)
     case EM_MOXIE:   /* R_MOXIE_NONE.  */
     case EM_NIOS32:  /* R_NIOS_NONE.  */
     case EM_OR1K:    /* R_OR1K_NONE. */
+    case EM_PDP11:   /* R_PDP11_NONE.  */
     case EM_PARISC:  /* R_PARISC_NONE.  */
     case EM_PPC64:   /* R_PPC64_NONE.  */
     case EM_PPC:     /* R_PPC_NONE.  */

@@ -199,6 +199,7 @@ elf32-mt.c
 elf32-nds32.c
 elf32-nds32.h
 elf32-or1k.c
+elf32-pdp11.c
 elf32-pj.c
 elf32-ppc.c
 elf32-ppc.h

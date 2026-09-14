@@ -1078,6 +1078,12 @@ case "${targ}" in
 
   pdp11-*-rt11*)
     targ_defvec=pdp11_aout_vec
+    # elf32-pdp11 is selected but not the default: objects and
+    # executables are still a.out, and this makes the ELF target
+    # readable and writable (objcopy -O elf32-pdp11) while the ELF side
+    # of the toolchain is being built out.  Only for the rt11 OS -- a
+    # plain pdp11-*-aout build stays vanilla binutils.
+    targ_selvecs=pdp11_elf32_vec
     targ_underscore=yes
     # Makes the sav-pdp11 (RT-11 SAV executable) target vector visible
     # in bfd/targets.c -- see the #ifdef guard there.  Only meaningful

@@ -332,6 +332,7 @@ BFD32_BACKENDS = \
 	elf32-mt.lo \
 	elf32-nds32.lo \
 	elf32-or1k.lo \
+	elf32-pdp11.lo \
 	elf32-pj.lo \
 	elf32-ppc.lo \
 	elf32-pru.lo \
@@ -466,6 +467,7 @@ BFD32_BACKENDS_CFILES = \
 	elf32-mt.c \
 	elf32-nds32.c \
 	elf32-or1k.c \
+	elf32-pdp11.c \
 	elf32-pj.c \
 	elf32-ppc.c \
 	elf32-pru.c \

@@ -15651,6 +15651,7 @@ do
     pdp11_aout_vec)		 tb="$tb pdp11.lo" ;;
     pef_vec)			 tb="$tb pef.lo" ;;
     pef_xlib_vec)		 tb="$tb pef.lo" ;;
+    pdp11_elf32_vec)		 tb="$tb elf32-pdp11.lo elf32.lo $elf" ;;
     pj_elf32_vec)		 tb="$tb elf32-pj.lo elf32.lo $elf" ;;
     pj_elf32_le_vec)		 tb="$tb elf32-pj.lo elf32.lo $elf" ;;
     powerpc_boot_vec)		 tb="$tb ppcboot.lo" ;;
