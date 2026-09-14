@@ -230,6 +230,25 @@ md_number_to_chars (char con[], valueT value, int nbytes)
      0x12345678 is stored as "\x56\x78\x12\x34". It's
      anyone's guess what 0x123456 would be stored like.  */
 
+#ifdef OBJ_ELF
+  /* Except in an ELF file, where a four-byte datum is a four-byte
+     datum: the header says the file is little-endian, and everything
+     that reads one -- the linker, readelf, a DWARF consumer -- takes it
+     at its word.  Putting the high half first would make every
+     four-byte field of the debug information unreadable.
+
+     This costs the compiler nothing: a C long is two words on this
+     machine and gcc emits it as two .word directives in the order the
+     machine wants, never as a .long.  So .long here is what the file
+     format means by it, and a PDP-11 long is spelled the way the
+     compiler already spells it.  */
+  if (nbytes == 4 || nbytes == 8)
+    {
+      number_to_chars_littleendian (con, value, nbytes);
+      return;
+    }
+#endif
+
   switch (nbytes)
     {
     case 0:

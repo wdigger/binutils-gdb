@@ -35,24 +35,6 @@
 #include "elf-bfd.h"
 #include "elf/pdp11.h"
 
-/* A 32-bit quantity on this machine is two 16-bit words, high word
-   first, each word little-endian: 0x12345678 is the bytes 34 12 78 56.
-   That is what the assembler's md_number_to_chars writes and what the
-   compiler lays down for a long, so R_PDP11_32 has to agree with it --
-   bfd_getl32/bfd_putl32 would quietly swap the halves.  Only the write
-   side is needed: these relocations are RELA and not partial_inplace,
-   so nothing ever reads back what was there.  */
-
-static void
-pdp11_elf_put_32 (bfd_vma value, bfd_byte *addr)
-{
-  bfd_putl16 ((value >> 16) & 0xffff, addr);
-  bfd_putl16 (value & 0xffff, addr + 2);
-}
-
-static bfd_reloc_status_type pdp11_elf_reloc_32
-  (bfd *, arelent *, asymbol *, void *, asection *, bfd *, char **);
-
 static reloc_howto_type pdp11_elf_howto_table[] =
 {
   /* No relocation.  */
@@ -120,8 +102,9 @@ static reloc_howto_type pdp11_elf_howto_table[] =
 	 0x000000ff,
 	 false),
 
-  /* Two words, S + A, in this machine's own word order -- hence the
-     special function rather than the generic one.  */
+  /* Four bytes, S + A, little-endian like every other four-byte datum
+     in an ELF file -- see include/elf/pdp11.h on why this is not the
+     order the machine stores a C long in.  */
   HOWTO (R_PDP11_32,
 	 0,
 	 4,
@@ -129,56 +112,13 @@ static reloc_howto_type pdp11_elf_howto_table[] =
 	 false,
 	 0,
 	 complain_overflow_dont,
-	 pdp11_elf_reloc_32,
+	 bfd_elf_generic_reloc,
 	 "R_PDP11_32",
 	 false,
 	 0,
 	 0xffffffff,
 	 false),
 };
-
-/* Install a 32-bit value the machine's way.  Reached through
-   bfd_perform_relocation and bfd_install_relocation; the linker's own
-   path goes through pdp11_elf_final_link_relocate below, which does the
-   same thing.  */
-
-static bfd_reloc_status_type
-pdp11_elf_reloc_32 (bfd *abfd,
-		    arelent *reloc_entry,
-		    asymbol *symbol,
-		    void *data,
-		    asection *input_section,
-		    bfd *output_bfd,
-		    char **error_message ATTRIBUTE_UNUSED)
-{
-  bfd_size_type octets;
-  bfd_vma relocation;
-
-  /* A relocatable link leaves the contents alone.  */
-  if (output_bfd != NULL)
-    {
-      reloc_entry->address += input_section->output_offset;
-      return bfd_reloc_ok;
-    }
-
-  if (bfd_is_und_section (symbol->section)
-      && (symbol->flags & BSF_WEAK) == 0)
-    return bfd_reloc_undefined;
-
-  octets = (reloc_entry->address
-	    * bfd_octets_per_byte (abfd, input_section));
-  if (!bfd_reloc_offset_in_range (reloc_entry->howto, abfd,
-				  input_section, octets))
-    return bfd_reloc_outofrange;
-
-  relocation = symbol->value + reloc_entry->addend;
-  if (!bfd_is_com_section (symbol->section))
-    relocation += (symbol->section->output_section->vma
-		   + symbol->section->output_offset);
-
-  pdp11_elf_put_32 (relocation, (bfd_byte *) data + octets);
-  return bfd_reloc_ok;
-}
 
 /* Map BFD reloc types to PDP-11 ELF reloc types.  */
 
@@ -245,34 +185,6 @@ pdp11_elf_info_to_howto (bfd *abfd,
 
   cache_ptr->howto = &pdp11_elf_howto_table[r_type];
   return true;
-}
-
-/* Perform a single relocation.  Everything but R_PDP11_32 is what the
-   generic code already does.  */
-
-static bfd_reloc_status_type
-pdp11_elf_final_link_relocate (reloc_howto_type *howto,
-			       bfd *input_bfd,
-			       asection *input_section,
-			       bfd_byte *contents,
-			       Elf_Internal_Rela *rel,
-			       bfd_vma relocation)
-{
-  if (howto->type == R_PDP11_32)
-    {
-      bfd_size_type octets = (rel->r_offset
-			      * bfd_octets_per_byte (input_bfd,
-						     input_section));
-
-      if (!bfd_reloc_offset_in_range (howto, input_bfd, input_section, octets))
-	return bfd_reloc_outofrange;
-
-      pdp11_elf_put_32 (relocation + rel->r_addend, contents + octets);
-      return bfd_reloc_ok;
-    }
-
-  return _bfd_final_link_relocate (howto, input_bfd, input_section, contents,
-				   rel->r_offset, relocation, rel->r_addend);
 }
 
 /* Relocate a PDP-11 ELF section.  */
@@ -355,8 +267,8 @@ pdp11_elf_relocate_section (bfd *output_bfd,
       if (bfd_link_relocatable (info))
 	continue;
 
-      r = pdp11_elf_final_link_relocate (howto, input_bfd, input_section,
-					 contents, rel, relocation);
+      r = _bfd_final_link_relocate (howto, input_bfd, input_section, contents,
+				    rel->r_offset, relocation, rel->r_addend);
 
       if (r != bfd_reloc_ok)
 	{

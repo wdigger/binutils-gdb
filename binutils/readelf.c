@@ -15529,6 +15529,8 @@ is_32bit_abs_reloc (Filedata * filedata, unsigned int reloc_type)
       return reloc_type == 1; /* R_NIOS_32.  */
     case EM_OR1K:
       return reloc_type == 1; /* R_OR1K_32.  */
+    case EM_PDP11:
+      return reloc_type == 4; /* R_PDP11_32.  */
     case EM_PARISC:
       return (reloc_type == 1 /* R_PARISC_DIR32.  */
 	      || reloc_type == 2 /* R_PARISC_DIR21L.  */
@@ -15850,6 +15852,8 @@ is_16bit_abs_reloc (Filedata * filedata, unsigned int reloc_type)
       return reloc_type == 13; /* R_NIOS2_BFD_RELOC_16.  */
     case EM_NIOS32:
       return reloc_type == 9; /* R_NIOS_16.  */
+    case EM_PDP11:
+      return reloc_type == 1; /* R_PDP11_16.  */
     case EM_OR1K:
       return reloc_type == 2; /* R_OR1K_16.  */
     case EM_RISCV:

@@ -52,10 +52,18 @@ START_RELOC_NUMBERS (elf_pdp11_reloc_type)
   RELOC_NUMBER (R_PDP11_PCREL16,  2)
   /* One byte, S + A.  */
   RELOC_NUMBER (R_PDP11_8,	  3)
-  /* Two words, S + A, stored the way this machine stores a 32-bit
-     quantity: high word first, each word little-endian, so 0x12345678
-     is the bytes 34 12 78 56.  The assembler's md_number_to_chars does
-     the same, and the relocation has to match it.  */
+  /* Four bytes, S + A, little-endian.
+
+     Worth a word on why, because the machine itself stores a 32-bit
+     quantity as two words with the high one first -- 0x12345678 is the
+     bytes 34 12 78 56.  That is a property of how a C long is laid out,
+     not of the file: an ELF header says the file is little-endian, and
+     the linker, readelf and every DWARF consumer read a four-byte field
+     accordingly.  Since the compiler emits a long as two .word
+     directives in the machine's own order and never as a .long, nothing
+     is lost by letting the file format have its way here -- and the
+     four-byte fields of the debug information become readable, which
+     they could not otherwise be.  */
   RELOC_NUMBER (R_PDP11_32,	  4)
 END_RELOC_NUMBERS (R_PDP11_max)
 
