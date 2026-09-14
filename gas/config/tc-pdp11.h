@@ -20,7 +20,14 @@
 
 #define TC_PDP11 1
 
+#ifdef OBJ_ELF
+#define TARGET_FORMAT "elf32-pdp11"
+/* Give every section an even alignment; see the hook itself.  */
+extern void pdp11_elf_section_change_hook (void);
+#define md_elf_section_change_hook pdp11_elf_section_change_hook
+#else
 #define TARGET_FORMAT "a.out-pdp11"
+#endif
 #define TARGET_ARCH bfd_arch_pdp11
 #define TARGET_BYTES_BIG_ENDIAN 0
 

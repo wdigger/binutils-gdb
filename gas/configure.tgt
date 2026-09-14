@@ -355,6 +355,10 @@ case ${generic_target} in
   or1k*-*-elf | or1k*-*-rtems*) 	fmt=elf endian=big ;;
   or1k*-*-linux*)			fmt=elf em=linux endian=big ;;
 
+  # The rt11 OS is where this port's ELF work happens; a plain
+  # pdp11-*-aout target is left on a.out, matching vanilla binutils.
+  pdp11-*-rt11*)			fmt=elf ;;
+
   pj*)					fmt=elf ;;
 
   ppc-*-aix5.[01])			fmt=coff em=aix5 ;;

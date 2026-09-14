@@ -178,6 +178,28 @@ init_defaults (void)
     }
 }
 
+#ifdef OBJ_ELF
+/* Nothing this machine puts in a section is byte-aligned: instructions
+   and words both want an even address.  a.out sections carry 2**1
+   because the format has no choice, but an ELF section is whatever it
+   says it is, and a section left at 2**0 can be placed on an odd
+   address by the linker.  Raise every section this assembler creates,
+   which is what the hook below is for -- it runs on each section
+   change, so .text.foo and the rest are covered too.  */
+
+static void
+pdp11_elf_record_alignment (segT seg)
+{
+  record_alignment (seg, 1);
+}
+
+void
+pdp11_elf_section_change_hook (void)
+{
+  pdp11_elf_record_alignment (now_seg);
+}
+#endif
+
 void
 md_begin (void)
 {
@@ -191,6 +213,14 @@ md_begin (void)
     str_hash_insert (insn_hash, pdp11_opcodes[i].name, pdp11_opcodes + i, 0);
   for (i = 0; i < pdp11_num_aliases; i++)
     str_hash_insert (insn_hash, pdp11_aliases[i].name, pdp11_aliases + i, 0);
+
+#ifdef OBJ_ELF
+  /* See pdp11_elf_section_change_hook; these three exist before any
+     section directive can be seen.  */
+  pdp11_elf_record_alignment (text_section);
+  pdp11_elf_record_alignment (data_section);
+  pdp11_elf_record_alignment (bss_section);
+#endif
 }
 
 void
@@ -280,6 +310,15 @@ md_apply_fix (fixS *fixP,
     default:
       BAD_CASE (fixP->fx_r_type);
     }
+
+#ifdef OBJ_ELF
+  /* These relocations are RELA.  When one is going to be emitted, the
+     addend carries the whole value and the field is left as it is --
+     tc_gen_reloc below builds that addend.  Writing the value here as
+     well, the way the a.out path does, would count it twice.  */
+  if (fixP->fx_addsy != NULL)
+    return;
+#endif
 
   if (fixP->fx_addsy != NULL)
     val += symbol_get_bfdsym (fixP->fx_addsy)->section->vma;
@@ -1435,8 +1474,19 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED,
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 
+#ifdef OBJ_ELF
+  /* RELA: the addend is the whole of what md_apply_fix did not write.
+     A PDP-11 PC-relative operand is reached from the word *after* the
+     one holding the displacement, while ELF measures from that word
+     itself, so the difference between the two lives here -- see
+     include/elf/pdp11.h.  */
+  reloc->addend = fixp->fx_offset;
+  if (fixp->fx_pcrel)
+    reloc->addend -= fixp->fx_size;
+#else
   /* This is taken account for in md_apply_fix().  */
   reloc->addend = -symbol_get_bfdsym (fixp->fx_addsy)->section->vma;
+#endif
 
   code = fixp->fx_r_type;
   if (fixp->fx_pcrel)

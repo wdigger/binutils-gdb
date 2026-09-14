@@ -26,6 +26,10 @@ proc is_elf_format {} {
     if { [istarget m68hc1*-*] || [istarget s12z*-*] || [istarget xgate-*] } {
 	return 1;
     }
+    # pdp11's rt11 OS is ELF; a plain pdp11-*-aout target is not.
+    if { [istarget pdp11-*-rt11*] } {
+	return 1;
+    }
 # vxworks (and windiss) excluded due to number of ELF tests that need
 # modifying to pass on those targets.
 #	 && ![istarget *-*-vxworks*]

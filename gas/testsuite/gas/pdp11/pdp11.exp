@@ -18,10 +18,24 @@
 # pdp11/pdp11 tests
 #
 
+# Four of these check what the assembler left in the field of a
+# relocated operand, and that is a property of the object format, not of
+# the assembler's decoding: a.out resolves what it can and compensates
+# in the field, ELF leaves the field alone and puts everything in the
+# addend.  So they need one expectation file each way -- the encodings
+# they are really about are the same in both.
+proc pdp11_run_dump_test { name } {
+    if { [is_elf_format] } {
+	run_dump_test "$name-elf"
+    } else {
+	run_dump_test "$name"
+    }
+}
+
 if [expr [istarget "pdp11-*-*"]]  then {
-    run_dump_test "opcode"
-    run_dump_test "absreloc"
-    run_dump_test "pr14480"
+    pdp11_run_dump_test "opcode"
+    pdp11_run_dump_test "absreloc"
+    pdp11_run_dump_test "pr14480"
     run_dump_test "pr23481"
-    run_dump_test "pr26001"
+    pdp11_run_dump_test "pr26001"
 }
