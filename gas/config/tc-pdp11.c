@@ -339,11 +339,24 @@ md_apply_fix (fixS *fixP,
 
 #ifdef OBJ_ELF
   /* These relocations are RELA.  When one is going to be emitted, the
-     addend carries the whole value and the field is left as it is --
+     addend carries the whole value and the field holds nothing --
      tc_gen_reloc below builds that addend.  Writing the value here as
-     well, the way the a.out path does, would count it twice.  */
+     well, the way the a.out path does, would count it twice.
+
+     Clear the field rather than leave it: the word behind a relocatable
+     operand is not always initialised, and where the a.out path always
+     overwrote it, here it would survive into the object.  The linker
+     ignores it either way, so nothing was ever wrong with the programs
+     -- but three of this project's object files came out differing
+     between two builds of the same source because of it.  Only the
+     field, mind: an eight-bit branch displacement shares its word with
+     the opcode.  */
   if (fixP->fx_addsy != NULL)
-    return;
+    {
+      code &= ~mask;
+      md_number_to_chars (buf, code, size);
+      return;
+    }
 #endif
 
   if (fixP->fx_addsy != NULL)
