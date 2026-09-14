@@ -196,7 +196,14 @@ pdp11_elf_record_alignment (segT seg)
 void
 pdp11_elf_section_change_hook (void)
 {
-  pdp11_elf_record_alignment (now_seg);
+  /* Only what the machine loads needs the machine's alignment.  Raising
+     it elsewhere would also pad the section out to an even size, and a
+     section a tool merely reads -- the debug sections, or the streams
+     -flto leaves behind -- is a byte stream whose length is part of its
+     meaning.  An extra zero byte at the end of one of those is how
+     -flto came to fail with "compressed stream: buffer error".  */
+  if ((bfd_section_flags (now_seg) & SEC_ALLOC) != 0)
+    pdp11_elf_record_alignment (now_seg);
 }
 #endif
 
@@ -1466,9 +1473,19 @@ md_undefined_symbol (char *name ATTRIBUTE_UNUSED)
 }
 
 valueT
-md_section_align (segT segment ATTRIBUTE_UNUSED,
-		  valueT size)
+md_section_align (segT segment, valueT size)
 {
+#ifdef OBJ_ELF
+  /* Round up only what the machine loads.  A section a tool merely
+     reads -- the debug sections, or the streams -flto leaves behind --
+     is a byte stream whose length is part of its meaning, and an extra
+     zero byte on the end of one is not padding but corruption: it is
+     how -flto came to fail with "compressed stream: buffer error", the
+     zlib stream having grown a byte past its end.  */
+  if ((bfd_section_flags (segment) & SEC_ALLOC) == 0)
+    return size;
+#endif
+
   return (size + 1) & ~1;
 }
 
