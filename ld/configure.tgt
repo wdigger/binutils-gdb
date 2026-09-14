@@ -683,7 +683,8 @@ or1k-*-linux* | or1knd-*-linux*)	targ_emul=elf32or1k_linux
 			;;
 pdp11-*-rt11*)		targ_emul=pdp11rt11sav
 			targ_extra_emuls="pdp11rt11 pdp11 pdp11rt11rel"
-			targ_extra_ofiles=
+			# Keeps the default ldelf.o/ldelfgen.o: the rt11
+			# emulations are ELF ones now, and they need it.
 			;;
 pdp11-*-*)		targ_emul=pdp11
 			targ_extra_ofiles=

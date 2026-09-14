@@ -409,6 +409,9 @@ pdp11_elf_relocate_section (bfd *output_bfd,
 
 #define TARGET_LITTLE_SYM	pdp11_elf32_vec
 #define TARGET_LITTLE_NAME	"elf32-pdp11"
+/* The compiler prefixes an underscore, the same as it did for
+   a.out; ld's --wrap and -u have to look for the same names.  */
+#define elf_symbol_leading_char		'_'
 
 #define elf_info_to_howto_rel			NULL
 #define elf_info_to_howto			pdp11_elf_info_to_howto

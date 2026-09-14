@@ -7,7 +7,9 @@
 # Default linker script for the pdp11rt11 emulation: a single flat
 # image starting at ${TEXT_START_ADDR} (01000 octal by default), with
 # .text/.rodata/.data merged into one output section rather than
-# separate page-aligned segments -- this leaves the whole 64K PDP-11
+# separate page-aligned segments.  The .text.*/.data.*/.bss.* wildcards
+# are for -ffunction-sections and -fdata-sections, which only become
+# possible at all once the objects are ELF -- this leaves the whole 64K PDP-11
 # address space usable and matches the memory layout RT-11 SAV
 # executables need (address 0 through 0777 octal is reserved for the
 # SAV file header; real code and data start right after it).  This is
@@ -36,12 +38,14 @@ if test -z "${RELOCATING}"; then
     *(.rodata)
     *(.rodata.*)
     *(.data)
+    *(.data.*)
   }"
 else
   DATA_IN_TEXT="
     *(.rodata)
     *(.rodata.*)
-    *(.data)"
+    *(.data)
+    *(.data.*)"
   SEPARATE_DATA_SECTION=
 fi
 
@@ -65,7 +69,8 @@ SECTIONS
   .text :
   {
     ${RELOCATING+PROVIDE (code = .);}
-    *(.text)${DATA_IN_TEXT}
+    *(.text)
+    *(.text.*)${DATA_IN_TEXT}
     ${CONSTRUCTING+CONSTRUCTORS}
     ${RELOCATING+. = ALIGN(8);}
     ${RELOCATING+_etext = .;}
@@ -76,6 +81,7 @@ ${SEPARATE_DATA_SECTION}
   {
     ${RELOCATING+__bss_start = .;}
     *(.bss)
+    *(.bss.*)
     *(COMMON)
     ${RELOCATING+. = ALIGN(2);}
     ${RELOCATING+_end = .;}
