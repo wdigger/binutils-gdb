@@ -686,6 +686,11 @@ ft32-*-elf)
 	gdb_target_obs="ft32-tdep.o"
 	;;
 
+pdp11-*-*)
+	# Target: DEC PDP-11
+	gdb_target_obs="pdp11-tdep.o"
+	;;
+
 v850*-*-elf | v850*-*-rtems*)
 	# Target: NEC V850 processor
 	gdb_target_obs="v850-tdep.o"
