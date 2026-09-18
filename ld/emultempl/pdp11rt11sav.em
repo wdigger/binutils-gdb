@@ -139,6 +139,13 @@ gld${EMULATION_NAME}_after_close_output (void)
   if (!bfd_close (ibfd))
     fatal (_("%P: %s: final close failed: %E\n"), output_filename);
 
+  /* The linked file is still sitting there under the name the SAV image
+     is about to take, and on Windows rename() will not write over an
+     existing file the way it does everywhere else -- "cannot rename
+     hello.sav.sav-tmp to hello.sav: File exists".  Removing it first
+     costs nothing on a host where rename() would have done it.  */
+  unlink (output_filename);
+
   if (rename (tmp_filename, output_filename) != 0)
     fatal (_("%P: cannot rename %s to %s: %s\n"),
 	   tmp_filename, output_filename, strerror (errno));
